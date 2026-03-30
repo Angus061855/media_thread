@@ -5,12 +5,11 @@ import requests
 from google import genai
 
 # ── 環境變數 ──────────────────────────────────────────
-NOTION_TOKEN           = os.environ["NOTION_TOKEN"]
-NOTION_DATABASE_ID     = os.environ["NOTION_DATABASE_ID_2"]
-NOTION_PENDING_DB_ID   = os.environ["NOTION_PENDING_DATABASE_ID"]
-GEMINI_API_KEY         = os.environ["GEMINI_API_KEY"]
-THREADS_USER_ID        = os.environ["THREADS_USER_ID"]
-THREADS_TOKEN          = os.environ["IG_ACCESS_TOKEN"]
+NOTION_TOKEN         = os.environ["NOTION_TOKEN"]
+NOTION_PENDING_DB_ID = os.environ["NOTION_PENDING_DATABASE_ID"]
+GEMINI_API_KEY       = os.environ["GEMINI_API_KEY"]
+THREADS_USER_ID      = os.environ["THREADS_USER_ID"]
+THREADS_TOKEN        = os.environ["IG_ACCESS_TOKEN"]
 
 EXAMPLE_POSTS = """
 以下是真實的發文範例，請完全學習這個風格、語氣、句子長度和換行方式：
@@ -77,28 +76,7 @@ def update_status(page_id, status="已發"):
     }
     requests.patch(url, headers=headers, json={"properties": {"狀態": {"status": {"name": status}}}})
 
-def get_used_topics():
-    url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
-    headers = {
-        "Authorization": f"Bearer {NOTION_TOKEN}",
-        "Notion-Version": "2022-06-28",
-        "Content-Type": "application/json",
-    }
-    used = []
-    payload = {}
-    while True:
-        res = requests.post(url, headers=headers, json=payload).json()
-        for page in res.get("results", []):
-            props = page.get("properties", {})
-            title_list = props.get("主題", {}).get("title", [])
-            if title_list:
-                used.append(title_list[0]["plain_text"])
-        if not res.get("has_more"):
-            break
-        payload["start_cursor"] = res["next_cursor"]
-    return used
-
-def generate_post(used_topics, custom_topic):
+def generate_post(custom_topic):
     client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = f"""
 你是一位在八大行業做了7年的男性經紀人，現在在 Threads 上連續發文，目的是幫助想入行或已經在行業裡的女生保護自己、避免被黑心經紀騙。
@@ -208,8 +186,7 @@ if __name__ == "__main__":
         exit(0)
 
     print(f"📌 主題：{custom_topic}")
-    used_topics = get_used_topics()
-    post_text = generate_post(used_topics, custom_topic)
+    post_text = generate_post(custom_topic)
     print("貼文內容：\n", post_text)
     post_to_threads(post_text)
     update_status(page_id, "已發")

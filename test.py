@@ -67,14 +67,15 @@ def generate_post(used_topics):
 - 第七則：收尾昇華，重複核心觀念，引導留言或私訊
 
 【字數規則】
-- 每則 270-280 字
-- 總字數 1900-1960 字
+- 每則嚴格控制在 120-140 個中文字以內
+- 總字數 840-980 字
+- 寧可寫少，不要超過
 
 【語言風格】
 - 用「妳」稱呼讀者
 - 台灣口語，說人話，不用專業術語
 - 短句為主，每句不超過 20 字
-- 遇到「。」就換行並空一行
+- 遇到句號就換行並空一行
 - 大量使用「妳」「我」「妳們」，製造一對一對話感
 - 重要觀念重複三次強調
 - 對話用「她說」「我說」推動故事，有來有往
@@ -92,7 +93,7 @@ def generate_post(used_topics):
 【格式規則】
 - 直接輸出文章內容，不要用任何 codeblock 包起來
 - 每則開頭單獨一行寫「§1」「§2」...「§7」作為分隔標記
-- 遇到「。」就換行並空一行
+- 遇到句號就換行並空一行
 - 禁用：「——」「[1]」「[2]」等引用標籤、emoji、粗體、斜體
 - 標點符號全部使用全形（，。？！：）
 - 只輸出文章內容，不要加任何說明、標題、編號
@@ -141,7 +142,14 @@ def post_to_threads(post_text):
     last_published_id = ""
 
     for i, text in enumerate(posts):
-        print(f"🚀 建立第 {i+1} 則 container...")
+        # 確保換行正確
+        text = text.replace("\\n", "\n")
+
+        # 超過 490 字元強制截斷（Threads 上限 500）
+        if len(text) > 490:
+            text = text[:490]
+
+        print(f"🚀 建立第 {i+1} 則 container（{len(text)} 字元）...")
 
         create_url = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads"
         data = {

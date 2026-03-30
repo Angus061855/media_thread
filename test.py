@@ -1,32 +1,19 @@
 import os
-import requests
-from google import genai
-from datetime import datetime
+import re
+import sys
 import time
+import requests
+import datetime
+from google import genai
 
 # ── 環境變數 ──────────────────────────────────────────
-GEMINI_API_KEY           = os.environ["GEMINI_API_KEY"]
-THREADS_ACCESS_TOKEN     = os.environ["IG_ACCESS_TOKEN"]
-THREADS_USER_ID          = os.environ["THREADS_USER_ID"]
-NOTION_TOKEN             = os.environ["NOTION_TOKEN"]
+NOTION_TOKEN             = os.environ["NOTION_API_KEY"]
 NOTION_DATABASE_ID       = os.environ["NOTION_DATABASE_ID"]
-NOTION_PENDING_DB_ID     = os.environ["NOTION_PENDING_DATABASE_ID"]
-POST_MODE                = os.environ.get("POST_MODE", "auto")
+GEMINI_API_KEY           = os.environ["GEMINI_API_KEY"]
+THREADS_USER_ID          = os.environ["THREADS_USER_ID"]
+THREADS_TOKEN            = os.environ["THREADS_ACCESS_TOKEN"]
 
-# ── Gemini 設定 ───────────────────────────────────────
-client = genai.Client(api_key=GEMINI_API_KEY)
-GEMINI_MODEL = "gemini-2.5-flash"
-
-NOTION_HEADERS = {
-    "Authorization": f"Bearer {NOTION_TOKEN}",
-    "Content-Type": "application/json",
-    "Notion-Version": "2022-06-28"
-}
-
-# ══════════════════════════════════════════════════════
-# 1. Gemini 生成文章（七段）
-# ══════════════════════════════════════════════════════
-# ── 範例文章（讓 Gemini 學你的語氣）─────────────────
+# ── 範例文章（讓 Gemini 學語氣）─────────────────────
 EXAMPLE_POSTS = """
 以下是真實的文章範例，請完全學習這個風格、語氣、句子長度和換行方式：
 
@@ -95,7 +82,6 @@ def generate_post(used_topics, custom_topic=None):
 
     used_str = "\n".join(f"- {t}" for t in used_topics) if used_topics else "（目前沒有已用主題）"
 
-    # 根據是否有指定主題，調整 Prompt 第一步
     if custom_topic:
         topic_instruction = f"""
 【主題】
@@ -175,167 +161,128 @@ def generate_post(used_topics, custom_topic=None):
     )
     return response.text.strip()
 
-# ══════════════════════════════════════════════════════
-# 2. 解析預寫內容（七段）
-# ══════════════════════════════════════════════════════
-def parse_preset_content(content: str) -> list[str]:
-    segments = []
-    parts = content.split("§")
-    for part in parts[1:]:
-        lines = part.strip().split("\n", 1)
-        if len(lines) == 2:
-            segments.append(lines[1].strip())
-        elif len(lines) == 1:
-            segments.append(lines[0].strip())
-    return segments
+# ── 3. 從貼文內容擷取主題文字 ────────────────────────
+def extract_topic(post_text):
+    lines = post_text.strip().split("\n")
+    for line in lines:
+        if line.startswith("主題："):
+            return line.replace("主題：", "").strip()
+    return "未知主題"
 
-# ══════════════════════════════════════════════════════
-# 3. 從 Notion 待發清單撈一筆「待發」資料
-# ══════════════════════════════════════════════════════
-def get_pending_post():
-    url = f"https://api.notion.com/v1/databases/{NOTION_PENDING_DB_ID}/query"
-    payload = {
-        "filter": {
-            "property": "狀態",
-            "select": {"equals": "待發"}
-        },
-        "page_size": 1
-    }
-    res = requests.post(url, headers=NOTION_HEADERS, json=payload)
-    data = res.json()
-    results = data.get("results", [])
-    if not results:
-        return None
-    page = results[0]
-    page_id = page["id"]
-    props = page["properties"]
-
-    topic = props["主題"]["title"][0]["text"]["content"] if props["主題"]["title"] else ""
-    preset = ""
-    if props.get("預寫內容") and props["預寫內容"].get("rich_text"):
-        preset = props["預寫內容"]["rich_text"][0]["text"]["content"]
-
-    return {"page_id": page_id, "topic": topic, "preset": preset}
-
-# ══════════════════════════════════════════════════════
-# 4. 把 Notion 待發清單該筆改成「已發」
-# ══════════════════════════════════════════════════════
-def mark_as_posted(page_id: str):
-    url = f"https://api.notion.com/v1/pages/{page_id}"
-    payload = {
-        "properties": {
-            "狀態": {"select": {"name": "已發"}}
-        }
-    }
-    requests.patch(url, headers=NOTION_HEADERS, json=payload)
-
-# ══════════════════════════════════════════════════════
-# 5. 發佈到 Threads（七段輪流發）
-# ══════════════════════════════════════════════════════
-def post_to_threads(segments: list[str], topic: str):
-    post_ids = []
-    base_url = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}"
-
-    for i, segment in enumerate(segments):
-        # Step 1：建立 container
-        container_url = f"{base_url}/threads"
-        container_payload = {
-            "media_type": "TEXT",
-            "text": segment,
-            "access_token": THREADS_ACCESS_TOKEN
-        }
-        container_res = requests.post(container_url, data=container_payload)
-        container_data = container_res.json()
-        creation_id = container_data.get("id")
-
-        if not creation_id:
-            print(f"❌ 第 {i+1} 段建立失敗：{container_data}")
+# ── 4. 用 reply_to_id 串成同一篇串文發到 Threads ──────
+def post_to_threads(post_text):
+    lines = post_text.strip().split("\n")
+    content_lines = []
+    skip_topic = True
+    for line in lines:
+        if skip_topic and line.startswith("主題："):
+            skip_topic = False
             continue
+        content_lines.append(line)
+    content = "\n".join(content_lines).strip()
 
-        # 等待 container 處理完成
+    posts = re.split(r'§\d+', content)
+    posts = [p.strip() for p in posts if p.strip()]
+
+    first_post_id = ""
+    last_published_id = ""
+
+    for i, text in enumerate(posts):
+        text = text.replace("\\n", "\n")
+
+        # 超過 480 bytes 強制截斷
+        while len(text.encode('utf-8')) > 480:
+            text = text[:-1]
+
+        print(f"🚀 建立第 {i+1} 則 container（{len(text)} 字）...")
+
+        create_url = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads"
+        data = {
+            "media_type": "TEXT",
+            "text": text,
+            "access_token": THREADS_TOKEN,
+        }
+
+        # ✅ 關鍵：用 reply_to_id 串成同一篇串文
+        if last_published_id:
+            data["reply_to_id"] = last_published_id
+
+        res = requests.post(create_url, data=data).json()
+        creation_id = res.get("id")
+        if not creation_id:
+            raise Exception(f"建立 container 失敗（第 {i+1} 則）：{res}")
+
         time.sleep(5)
 
-        # Step 2：發佈
-        publish_url = f"{base_url}/threads_publish"
-        publish_payload = {
+        print(f"📤 發布第 {i+1} 則...")
+        publish_url = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish"
+        pub_res = requests.post(publish_url, data={
             "creation_id": creation_id,
-            "access_token": THREADS_ACCESS_TOKEN
-        }
-        publish_res = requests.post(publish_url, data=publish_payload)
-        publish_data = publish_res.json()
-        post_id = publish_data.get("id")
+            "access_token": THREADS_TOKEN,
+        }).json()
 
-        if post_id:
-            post_ids.append(post_id)
-            print(f"✅ 第 {i+1} 段發佈成功，ID：{post_id}")
-        else:
-            print(f"❌ 第 {i+1} 段發佈失敗：{publish_data}")
+        published_id = pub_res.get("id", "")
+        print(f"第 {i+1} 則發文結果：", pub_res)
 
-        # 每段之間等待，避免頻率限制
-        time.sleep(10)
+        if i == 0:
+            first_post_id = published_id
 
-    return post_ids
+        last_published_id = published_id
+        time.sleep(3)
 
-# ══════════════════════════════════════════════════════
-# 6. 儲存發文紀錄到 Notion 已發文資料庫
-# ══════════════════════════════════════════════════════
-def save_to_notion(topic: str, segments: list[str], post_ids: list[str]):
+    return first_post_id
+
+# ── 5. 把新主題記錄進 Notion ─────────────────────────
+def save_to_notion(topic, post_text, post_id):
     url = "https://api.notion.com/v1/pages"
-    full_content = "\n\n".join([f"§{i+1}\n{s}" for i, s in enumerate(segments)])
+    headers = {
+        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Notion-Version": "2022-06-28",
+        "Content-Type": "application/json",
+    }
+    now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     payload = {
         "parent": {"database_id": NOTION_DATABASE_ID},
         "properties": {
-            "主題": {"title": [{"text": {"content": topic}}]},
-            "貼文內容": {"rich_text": [{"text": {"content": full_content[:2000]}}]},
-            "貼文 ID": {"rich_text": [{"text": {"content": ", ".join(post_ids)}}]},
-            "發文時間": {"date": {"start": datetime.utcnow().isoformat()}}
+            "主題": {
+                "title": [{"text": {"content": topic}}]
+            },
+            "預寫內容": {   # ← 改成你 Notion 實際的欄位名
+                "rich_text": [{"text": {"content": post_text[:2000]}}]
+            },
+            "狀態": {       # ← 你已有這個欄位
+                "status": {"name": "待發"}
+            }
         }
     }
-    res = requests.post(url, headers=NOTION_HEADERS, json=payload)
-    if res.status_code == 200:
-        print(f"✅ 已儲存到 Notion 紀錄")
-    else:
-        print(f"❌ 儲存 Notion 失敗：{res.json()}")
+    res = requests.post(url, headers=headers, json=payload)
+    print("Notion 回應狀態：", res.status_code)
+    print("Notion 回應內容：", res.json())  # ← 加這行方便除錯
 
-# ══════════════════════════════════════════════════════
-# 主流程
-# ══════════════════════════════════════════════════════
-def main():
-    print(f"🚀 發文模式：{POST_MODE}")
-
-    if POST_MODE == "pending":
-        pending = get_pending_post()
-        if not pending:
-            print("⚠️ 待發清單沒有資料，跳過本次發文")
-            return
-
-        topic = pending["topic"]
-        preset = pending["preset"]
-        page_id = pending["page_id"]
-
-        if preset.strip():
-            print(f"📝 使用預寫內容，主題：{topic}")
-            segments = parse_preset_content(preset)
-        else:
-            print(f"🤖 Gemini 生成文章，主題：{topic}")
-            segments = generate_post(topic)
-
-        post_ids = post_to_threads(segments, topic)
-        save_to_notion(topic, segments, post_ids)
-        mark_as_posted(page_id)
-
-    else:
-        print("🤖 自動模式，Gemini 自由發揮")
-        topic_prompt = "請給我一個適合 Threads 的貼文主題，只需要主題名稱，不需要其他說明。"
-        topic_res = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=topic_prompt
-        )
-        topic = topic_res.text.strip()
-        print(f"💡 自動主題：{topic}")
-        segments = generate_post(topic)
-        post_ids = post_to_threads(segments, topic)
-        save_to_notion(topic, segments, post_ids)
-
+# ── 主程式 ────────────────────────────────────────────
 if __name__ == "__main__":
-    main()
+    custom_topic = sys.argv[1] if len(sys.argv) > 1 else None
+
+    if custom_topic:
+        print(f"📌 使用指定主題：{custom_topic}")
+    else:
+        print("🎲 自動產生主題模式")
+
+    print("📥 撈取已用主題...")
+    used_topics = get_used_topics()
+    print(f"共 {len(used_topics)} 個已用主題")
+
+    print("✍️ 產生新貼文...")
+    post_text = generate_post(used_topics, custom_topic)
+    print("貼文內容：\n", post_text)
+
+    topic = extract_topic(post_text)
+    print("📌 本次主題：", topic)
+
+    print("🚀 發文到 Threads（七則串文）...")
+    first_post_id = post_to_threads(post_text)
+
+    print("📝 記錄主題到 Notion：", topic)
+    save_to_notion(topic, post_text, first_post_id)
+
+    print("✅ 完成！")

@@ -7,7 +7,7 @@ import time
 # ── 環境變數 ──────────────────────────────────────────
 GEMINI_API_KEY           = os.environ["GEMINI_API_KEY"]
 THREADS_ACCESS_TOKEN     = os.environ["IG_ACCESS_TOKEN"]
-THREADS_USER_ID          = os.environ["IG_USER_ID"]
+THREADS_USER_ID          = os.environ["THREADS_USER_ID"]
 NOTION_TOKEN             = os.environ["NOTION_TOKEN"]
 NOTION_DATABASE_ID       = os.environ["NOTION_DATABASE_ID"]
 NOTION_PENDING_DB_ID     = os.environ["NOTION_PENDING_DATABASE_ID"]

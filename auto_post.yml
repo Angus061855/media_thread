@@ -29,5 +29,5 @@ jobs:
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           NOTION_PENDING_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID_2 }}
         run: |
-          pip install --no-cache-dir google-generativeai notion-client requests
+          pip install google-generativeai notion-client requests
           python test.py

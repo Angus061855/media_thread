@@ -20,6 +20,25 @@ def get_pending_posts():
     res = requests.post(url, headers=headers, json=payload).json()
     return res.get("results", [])
 
+def get_page_content(page_id):
+    url = f"https://api.notion.com/v1/blocks/{page_id}/children"
+    headers = {
+        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Notion-Version": "2022-06-28",
+    }
+    res = requests.get(url, headers=headers).json()
+    blocks = res.get("results", [])
+
+    lines = []
+    for block in blocks:
+        block_type = block.get("type")
+        rich_text = block.get(block_type, {}).get("rich_text", [])
+        text = "".join([t["plain_text"] for t in rich_text])
+        if text.strip():
+            lines.append(text.strip())
+
+    return "\n".join(lines)
+
 def update_status(page_id, status="已發"):
     url = f"https://api.notion.com/v1/pages/{page_id}"
     headers = {
@@ -68,9 +87,8 @@ if __name__ == "__main__":
 
     page = posts[0]
     page_id = page["id"]
-    props = page.get("properties", {})
-    content_list = props.get("內容", {}).get("rich_text", [])
-    content = content_list[0]["plain_text"] if content_list else ""
+
+    content = get_page_content(page_id)
 
     if not content.strip():
         print("內容為空，結束。")

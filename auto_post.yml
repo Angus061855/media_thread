@@ -19,13 +19,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip --no-cache-dir
-          pip install --no-cache-dir google-generativeai notion-client requests
-          python -c "import google.generativeai; print('✅ google-generativeai 安裝成功')"
 
       - name: Run auto post script
         env:
@@ -35,4 +28,6 @@ jobs:
           NOTION_TOKEN: ${{ secrets.NOTION_API_KEY }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           NOTION_PENDING_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID_2 }}
-        run: python test.py
+        run: |
+          pip install --no-cache-dir google-generativeai notion-client requests
+          python test.py

@@ -1,0 +1,27 @@
+name: Auto Post _3 (段落直接發)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 10 * * *'  # 台灣 18:00
+    - cron: '0 13 * * *'  # 台灣 21:00
+    - cron: '0 15 * * *'  # 台灣 23:00
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run post_3
+        env:
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          NOTION_TOKEN: ${{ secrets.NOTION_API_KEY }}
+          NOTION_POST_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID_3 }}
+        run: |
+          pip install requests
+          python post_3.py
+```

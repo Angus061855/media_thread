@@ -2,14 +2,12 @@ import os
 import requests
 from google import genai
 
-# 環境變數
 THREADS_USER_ID = os.environ.get("THREADS_USER_ID")
 THREADS_ACCESS_TOKEN = os.environ.get("THREADS_ACCESS_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 NOTION_API_KEY = os.environ.get("NOTION_API_KEY")
 NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
 
-# 從 Notion 取得一篇未發布的文章
 def get_notion_article():
     url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
     headers = {
@@ -19,7 +17,7 @@ def get_notion_article():
     }
     body = {
         "filter": {
-            "property": "發布狀態",
+            "property": "Select",
             "select": {
                 "equals": "未發布"
             }
@@ -34,10 +32,9 @@ def get_notion_article():
         return None, None
     page = results[0]
     page_id = page["id"]
-    title = page["properties"]["名稱"]["title"][0]["text"]["content"]
+    title = page["properties"]["Title"]["title"][0]["text"]["content"]
     return page_id, title
 
-# 用 Gemini 生成文案
 def generate_post(title):
     client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = f"請根據以下主題，寫一篇適合發布在 Threads 上的短文，約150字，語氣輕鬆自然：\n主題：{title}"
@@ -47,9 +44,7 @@ def generate_post(title):
     )
     return response.text
 
-# 發布到 Threads
 def post_to_threads(text):
-    # Step 1: 建立 container
     url1 = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads"
     params1 = {
         "media_type": "TEXT",
@@ -62,7 +57,6 @@ def post_to_threads(text):
         print("建立 container 失敗", res1.json())
         return False
 
-    # Step 2: 發布
     url2 = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish"
     params2 = {
         "creation_id": container_id,
@@ -72,7 +66,6 @@ def post_to_threads(text):
     print("發布結果：", res2.json())
     return True
 
-# 把 Notion 文章標記為已發布
 def mark_as_published(page_id):
     url = f"https://api.notion.com/v1/pages/{page_id}"
     headers = {
@@ -82,7 +75,7 @@ def mark_as_published(page_id):
     }
     body = {
         "properties": {
-            "發布狀態": {
+            "Select": {
                 "select": {
                     "name": "已發布"
                 }
@@ -92,7 +85,6 @@ def mark_as_published(page_id):
     requests.patch(url, headers=headers, json=body)
     print("已標記為已發布")
 
-# 主程式
 if __name__ == "__main__":
     page_id, title = get_notion_article()
     if title:
@@ -102,4 +94,3 @@ if __name__ == "__main__":
         success = post_to_threads(post_text)
         if success:
             mark_as_published(page_id)
-

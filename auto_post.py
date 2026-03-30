@@ -34,7 +34,7 @@ def get_used_topics():
         payload["start_cursor"] = res["next_cursor"]
     return used
 
-# ── 2. 用 Gemini 產生新主題與七則貼文內容 ────────────────
+# ── 2. 用 Gemini 自己想題材，再產生七則貼文內容 ────────
 def generate_post(used_topics):
     client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -46,14 +46,10 @@ def generate_post(used_topics):
 以下是已經用過的主題，【全部禁止重複】：
 {used_str}
 
-可選主題方向如下，從中挑一個還沒用過的：
-- 黑心經紀的話術
-- 合約陷阱
-- 面談安全
-- 薪水抽成
-- 隱私保護
-- 換經紀的方法
-- 新人常見錯誤
+【第一步：自己想題材】
+請根據以下方向，自由發揮，想一個還沒用過、有吸引力的新主題。
+不要侷限在固定清單裡，可以從真實情境、常見誤解、心理操控、財務陷阱、職場安全、合約漏洞、入行心態等任何角度切入。
+只要是能幫助女生保護自己的題材，都可以。
 
 【角色設定】
 - 性別：男
@@ -128,7 +124,6 @@ def extract_topic(post_text):
 
 # ── 4. 用 reply_to_id 串成同一篇串文發到 Threads ──────
 def post_to_threads(post_text):
-    # 移除第一行的主題標記
     lines = post_text.strip().split("\n")
     content_lines = []
     skip_topic = True
@@ -139,7 +134,6 @@ def post_to_threads(post_text):
         content_lines.append(line)
     content = "\n".join(content_lines).strip()
 
-    # 用 §1 ~ §7 切成七則
     posts = re.split(r'§\d+', content)
     posts = [p.strip() for p in posts if p.strip()]
 
@@ -156,7 +150,6 @@ def post_to_threads(post_text):
             "access_token": THREADS_TOKEN,
         }
 
-        # 第二則之後，加上 reply_to_id 串接成同一篇串文
         if last_published_id:
             data["reply_to_id"] = last_published_id
 
@@ -165,7 +158,6 @@ def post_to_threads(post_text):
         if not creation_id:
             raise Exception(f"建立 container 失敗（第 {i+1} 則）：{res}")
 
-        # 等待 server 處理
         time.sleep(5)
 
         print(f"📤 發布第 {i+1} 則...")
@@ -182,8 +174,6 @@ def post_to_threads(post_text):
             first_post_id = published_id
 
         last_published_id = published_id
-
-        # 每則之間稍等，避免頻率限制
         time.sleep(3)
 
     return first_post_id

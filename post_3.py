@@ -16,8 +16,14 @@ def get_pending_posts():
         "Notion-Version": "2022-06-28",
         "Content-Type": "application/json",
     }
-    payload = {"filter": {"property": "狀態", "status": {"equals": "待發"}}}
+    payload = {}  # ← 不加 filter，撈全部
     res = requests.post(url, headers=headers, json=payload).json()
+
+    # 印出原始狀態資料
+    if res.get("results"):
+        page = res["results"][0]
+        print("狀態欄位原始資料：", page["properties"].get("狀態"))
+
     return res.get("results", [])
 
 def get_content_from_property(page):

@@ -4,13 +4,13 @@ import time
 import requests
 
 # ── 環境變數 ──────────────────────────────────────────
-NOTION_TOKEN       = os.environ["NOTION_TOKEN"]
+NOTION_TOKEN_2       = os.environ["NOTION_TOKEN_2"]
 NOTION_POST_DB_ID  = os.environ["NOTION_DATABASE_ID_3"]
 THREADS_USER_ID    = os.environ["THREADS_USER_ID"]
 THREADS_TOKEN      = os.environ["IG_ACCESS_TOKEN"]
 
 NOTION_HEADERS = {
-    "Authorization": f"Bearer {NOTION_TOKEN}",
+    "Authorization": f"Bearer {NOTION_TOKEN_2}",
     "Notion-Version": "2022-06-28",
     "Content-Type": "application/json",
 }
@@ -53,7 +53,7 @@ def get_content_from_property(page):
 def get_content_from_blocks(page_id):
     url = f"https://api.notion.com/v1/blocks/{page_id}/children"
     headers = {
-        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Authorization": f"Bearer {NOTION_TOKEN_2}",
         "Notion-Version": "2022-06-28",
     }
     res = requests.get(url, headers=headers).json()

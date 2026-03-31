@@ -4,7 +4,7 @@ import time
 import requests
 
 # ── 環境變數 ──────────────────────────────────────────
-NOTION_TOKEN_2       = os.environ["NOTION_TOKEN_2"]
+NOTION_TOKEN_2     = os.environ["NOTION_TOKEN_2"]
 NOTION_POST_DB_ID  = os.environ["NOTION_DATABASE_ID_3"]
 THREADS_USER_ID    = os.environ["THREADS_USER_ID"]
 THREADS_TOKEN      = os.environ["IG_ACCESS_TOKEN"]

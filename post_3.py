@@ -15,31 +15,30 @@ NOTION_HEADERS = {
     "Content-Type": "application/json",
 }
 
-# ── 只撈「待發」狀態的頁面 ────────────────────────────
+# ── 撈全部，印出每筆的狀態名稱，再手動篩選「待發」 ──────
 def get_pending_posts():
     url = f"https://api.notion.com/v1/databases/{NOTION_POST_DB_ID}/query"
-    payload = {
-        "filter": {
-            "property": "狀態",
-            "status": {
-                "equals": "待發"
-            }
-        }
-    }
-    res = requests.post(url, headers=NOTION_HEADERS, json=payload).json()
+    res = requests.post(url, headers=NOTION_HEADERS, json={}).json()
 
     results = res.get("results", [])
-    print(f"撈到待發筆數：{len(results)}")
+    print(f"資料庫總筆數：{len(results)}")
 
-    if results:
-        page = results[0]
-        print("狀態欄位原始資料：", page["properties"].get("狀態"))
+    # 印出每一筆的狀態，確認名稱
+    for i, page in enumerate(results):
+        status_prop = page["properties"].get("狀態", {})
+        status_name = status_prop.get("status", {}).get("name", "（無狀態）")
+        print(f"  第{i+1}筆 狀態原始值：'{status_name}'")
 
-    return results
+    # 用 Python 自己篩選，不靠 Notion filter
+    pending = [
+        p for p in results
+        if p["properties"].get("狀態", {}).get("status", {}).get("name") == "待發"
+    ]
+    print(f"篩選後待發筆數：{len(pending)}")
+    return pending
 
 # ── 讀取內容：先試 rich_text 欄位，空的話改讀頁面 body ──
 def get_content_from_property(page):
-    # 方法一：讀 rich_text 欄位
     rich_text = page["properties"].get("內容", {}).get("rich_text", [])
     content = "".join([t["plain_text"] for t in rich_text])
 
@@ -47,7 +46,6 @@ def get_content_from_property(page):
         print(f"✅ 從 rich_text 欄位讀到內容，長度：{len(content)}")
         return content
 
-    # 方法二：rich_text 是空的，改讀頁面 body blocks
     print("⚠️  rich_text 欄位為空，改讀頁面 body blocks...")
     return get_content_from_blocks(page["id"])
 
@@ -127,7 +125,7 @@ if __name__ == "__main__":
     page_id = page["id"]
 
     content = get_content_from_property(page)
-    print(f"讀到的內容預覽：{repr(content[:100])}")  # 只印前100字
+    print(f"讀到的內容預覽：{repr(content[:100])}")
 
     if not content.strip():
         print("內容為空，結束。")

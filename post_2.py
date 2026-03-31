@@ -5,7 +5,7 @@ import requests
 from google import genai
 
 # ── 環境變數 ──────────────────────────────────────────
-NOTION_TOKEN         = os.environ["NOTION_TOKEN"]
+NOTION_TOKEN         = os.environ["NOTION_TOKEN_2"]
 NOTION_PENDING_DB_ID = os.environ["NOTION_DATABASE_ID_2"]
 GEMINI_API_KEY       = os.environ["GEMINI_API_KEY"]
 THREADS_USER_ID      = os.environ["THREADS_USER_ID"]
@@ -75,7 +75,7 @@ def get_pending_topics():
 def update_status(page_id, status="已發"):
     url = f"https://api.notion.com/v1/pages/{page_id}"
     headers = {
-        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Authorization": f"Bearer {NOTION_TOKEN_2}",
         "Notion-Version": "2022-06-28",
         "Content-Type": "application/json",
     }

@@ -165,7 +165,7 @@ def post_to_threads(post_text):
 
     posts = re.split(r'§\d+', content)
     posts = [p.strip() for p in posts if p.strip()]
-    last_published_id = ""
+    first_published_id = ""
 
     for i, text in enumerate(posts):
         text = text.replace("\\n", "\n")
@@ -176,7 +176,7 @@ def post_to_threads(post_text):
         create_url = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads"
         data = {"media_type": "TEXT", "text": text, "access_token": THREADS_TOKEN}
         if last_published_id:
-            data["reply_to_id"] = last_published_id
+            ddata["reply_to_id"] = first_published_id
 
         res = requests.post(create_url, data=data).json()
         creation_id = res.get("id")
@@ -189,7 +189,9 @@ def post_to_threads(post_text):
             f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish",
             data={"creation_id": creation_id, "access_token": THREADS_TOKEN}
         ).json()
-        last_published_id = pub_res.get("id", "")
+                published_id = pub_res.get("id", "")
+        if i == 0:
+            first_published_id = published_id
         print(f"第 {i+1} 則結果：", pub_res)
         time.sleep(3)
 

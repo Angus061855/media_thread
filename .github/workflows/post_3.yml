@@ -3,7 +3,6 @@ name: Auto Post _3 (段落直接發)
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 10 * * *'  # 台灣 18:00
     - cron: '0 13 * * *'  # 台灣 21:00
     - cron: '0 15 * * *'  # 台灣 23:00
 

@@ -2,7 +2,6 @@ import os
 import re
 import time
 import requests
-from google import genai
 
 # ── 環境變數 ──────────────────────────────────────────
 NOTION_TOKEN_2       = os.environ["NOTION_TOKEN_2"]

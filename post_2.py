@@ -11,6 +11,15 @@ GEMINI_API_KEY       = os.environ["GEMINI_API_KEY"]
 THREADS_USER_ID      = os.environ["THREADS_USER_ID"]
 THREADS_TOKEN        = os.environ["IG_ACCESS_TOKEN"]
 
+# ── Telegram 通知 ─────────────────────────────────────
+def send_telegram(message):
+    token = os.environ["TELEGRAM_TOKEN"]
+    chat_id = os.environ["TELEGRAM_CHAT_ID"]
+    requests.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data={"chat_id": chat_id, "text": message}
+    )
+
 EXAMPLE_POSTS = """
 以下是真實的發文範例，請完全學習這個風格、語氣、句子長度和換行方式：
 
@@ -66,10 +75,9 @@ def get_pending_topics():
     payload = {"filter": {"property": "狀態", "status": {"equals": "待發"}}}
     res = requests.post(url, headers=headers, json=payload).json()
 
-    # 加這兩行
     print("Notion API 回傳：", res)
     print("找到筆數：", len(res.get("results", [])))
-    
+
     return res.get("results", [])
 
 def update_status(page_id, status="已發"):
@@ -221,6 +229,7 @@ def post_to_threads(post_text):
         print(f"第 {i+1} 則結果：", pub_res)
         time.sleep(3)
 
+# ── 主程式 ────────────────────────────────────────────
 if __name__ == "__main__":
     print("=== _2 給主題自動發模式 ===")
     pages = get_pending_topics()
@@ -239,9 +248,17 @@ if __name__ == "__main__":
         update_status(page_id, "已發")
         exit(0)
 
-    print(f"📌 主題：{custom_topic}")
-    post_text = generate_post(custom_topic)
-    print("貼文內容：\n", post_text)
-    post_to_threads(post_text)
-    update_status(page_id, "已發")
-    print("✅ 完成！")
+    try:
+        print(f"📌 主題：{custom_topic}")
+        post_text = generate_post(custom_topic)
+        print("貼文內容：\n", post_text)
+        post_to_threads(post_text)
+        update_status(page_id, "已發")
+        print("✅ 完成！")
+        send_telegram(f"✅ 帳號B 發文成功！\n主題：{custom_topic}")
+
+    except Exception as e:
+        error_msg = f"❌ 帳號B 發文失敗！\n主題：{custom_topic}\n錯誤原因：{str(e)}"
+        print(error_msg)
+        send_telegram(error_msg)
+        raise

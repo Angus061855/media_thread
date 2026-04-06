@@ -89,7 +89,7 @@ def post_to_threads(content):
 
     for i, text in enumerate(posts):
         text = text.replace("\\n", "\n")
-        while len(text.encode('utf-8')) > 480:
+        while len(text.encode('utf-8')) > 1500:
             text = text[:-1]
 
         print(f"🚀 建立第 {i+1} 則 container...")

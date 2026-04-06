@@ -58,6 +58,15 @@ EXAMPLE_POSTS = """
 她跟我說，哥我真的很想哭，因為我覺得我的人生就這樣毀了。
 """
 
+# ── Telegram 通知 ─────────────────────────────────────
+def send_telegram(message):
+    token = os.environ["TELEGRAM_TOKEN"]
+    chat_id = os.environ["TELEGRAM_CHAT_ID"]
+    requests.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data={"chat_id": chat_id, "text": message}
+    )
+
 def get_used_topics():
     url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
     headers = {
@@ -263,21 +272,23 @@ def save_to_notion(topic, post_text):
     res = requests.post(url, headers=headers, json=payload)
     print("Notion 回應：", res.status_code)
 
+# ── 主程式 ────────────────────────────────────────────
 if __name__ == "__main__":
-    print("=== _1 自動生成模式 ===")
-    used_topics = get_used_topics()
-    print(f"共 {len(used_topics)} 個已用主題")
-    post_text = generate_post(used_topics)
-    print("貼文內容：\n", post_text)
-    topic = extract_topic(post_text)
-    print("📌 主題：", topic)
-    post_to_threads(post_text)
-    save_to_notion(topic, post_text)
-    print("✅ 完成！")
-    send_telegram(f"✅ 帳號B 發文成功！\n主題：{topic}")
+    try:
+        print("=== _1 自動生成模式 ===")
+        used_topics = get_used_topics()
+        print(f"共 {len(used_topics)} 個已用主題")
+        post_text = generate_post(used_topics)
+        print("貼文內容：\n", post_text)
+        topic = extract_topic(post_text)
+        print("📌 主題：", topic)
+        post_to_threads(post_text)
+        save_to_notion(topic, post_text)
+        print("✅ 完成！")
+        send_telegram(f"✅ 帳號B 發文成功！\n主題：{topic}")
 
-except Exception as e:
-    error_msg = f"❌ 帳號B 發文失敗！\n錯誤原因：{str(e)}"
-    print(error_msg)
-    send_telegram(error_msg)
-    raise
+    except Exception as e:
+        error_msg = f"❌ 帳號B 發文失敗！\n錯誤原因：{str(e)}"
+        print(error_msg)
+        send_telegram(error_msg)
+        raise

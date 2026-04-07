@@ -3,8 +3,8 @@ name: Auto Post _1 (自動生成)
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 11 * * *'
-    - cron: '30 13 * * *'
+    - cron: '0 10 * * *'   # 台灣時間 18:00
+    - cron: '0 14 * * *'   # 台灣時間 22:00
 
 jobs:
   post:

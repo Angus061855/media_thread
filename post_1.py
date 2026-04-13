@@ -253,16 +253,31 @@ def post_to_threads(post_text):
         time.sleep(5)
 
         print(f"📤 發布第 {i+1} 則...")
-        pub_res = requests.post(
-            f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish",
-            data={"creation_id": creation_id, "access_token": THREADS_TOKEN},
-            timeout=30
-        ).json()
+        pub_res = None
+        for attempt in range(3):
+            print(f"📤 發布第 {i+1} 則（第 {attempt+1} 次嘗試）...")
+            pub_res = requests.post(
+                f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish",
+                data={"creation_id": creation_id, "access_token": THREADS_TOKEN},
+                timeout=30
+            ).json()
+
+            if pub_res.get("id"):  # 成功
+                break
+            elif pub_res.get("error", {}).get("is_transient"):  # 暫時性錯誤
+                print(f"暫時性錯誤，等待 15 秒後重試...")
+                time.sleep(15)
+            else:  # 非暫時性錯誤
+                raise Exception(f"發布失敗（第 {i+1} 則）：{pub_res}")
+
+        if not pub_res or not pub_res.get("id"):
+            raise Exception(f"發布失敗超過重試次數（第 {i+1} 則）：{pub_res}")
+
         published_id = pub_res.get("id", "")
         if i == 0:
             first_published_id = published_id
         print(f"第 {i+1} 則結果：", pub_res)
-        time.sleep(3)
+        time.sleep(8)  # 改成 5 秒，給 Threads 多一點緩衝
 
 def save_to_notion(topic, post_text):
     lines = post_text.strip().split("\n")

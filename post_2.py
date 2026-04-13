@@ -17,7 +17,8 @@ def send_telegram(message):
     chat_id = os.environ["TELEGRAM_CHAT_ID"]
     requests.post(
         f"https://api.telegram.org/bot{token}/sendMessage",
-        data={"chat_id": chat_id, "text": message}
+        data={"chat_id": chat_id, "text": message},
+        timeout=30
     )
 
 EXAMPLE_POSTS = """
@@ -103,11 +104,17 @@ def update_status(page_id, status="已發"):
         "Notion-Version": "2022-06-28",
         "Content-Type": "application/json",
     }
-    requests.patch(url, headers=headers, json={"properties": {"狀態": {"status": {"name": status}}}})
+    requests.patch(url, headers=headers, json={"properties": {"狀態": {"status": {"name": status}}}}, timeout=30)
 
 def generate_post(custom_topic):
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    prompt = f"""
+    for attempt in range(3):
+        try:
+            print(f"🤖 第 {attempt+1} 次呼叫 Gemini...")
+            client = genai.Client(
+                api_key=GEMINI_API_KEY,
+                http_options={"timeout": 300000}
+            )
+            prompt = f"""
 你是一位在八大行業做了7年的男性經紀人，現在在 Threads 上連續發文，目的是幫助想入行或已經在行業裡的女生保護自己、避免被黑心經紀騙。
 
 【主題】
@@ -203,15 +210,20 @@ def generate_post(custom_topic):
 - 立即用反轉句推翻它
 - 製造懸念，但不立刻揭曉答案
 
-
-
 【情緒曲線設計】
 - 第一則：震撼 → 第二則：同情 → 第三則：憤怒 → 第四則：恐懼 → 第五則：希望＋警惕 → 第六則：強化警惕 → 第七則：信任＋行動呼籲
 
 輸出格式：第一行輸出「主題：{custom_topic}」，空一行後開始輸出貼文內容。
 """
-    response = client.models.generate_content(model="gemma-4-31b-it", contents=prompt)
-    return response.text.strip()
+            response = client.models.generate_content(model="gemma-4-31b-it", contents=prompt)
+            return response.text.strip()
+        except Exception as e:
+            print(f"第 {attempt+1} 次失敗：{e}")
+            if attempt < 2:
+                print("等待 30 秒後重試...")
+                time.sleep(30)
+            else:
+                raise
 
 def post_to_threads(post_text):
     lines = post_text.strip().split("\n")
@@ -230,8 +242,9 @@ def post_to_threads(post_text):
 
     for i, text in enumerate(posts):
         text = text.replace("\\n", "\n")
-        while len(text.encode('utf-8')) > 500:
-            text = text[:500]
+        encoded = text.encode('utf-8')
+        if len(encoded) > 500:
+            text = encoded[:500].decode('utf-8', errors='ignore')
 
         print(f"🚀 建立第 {i+1} 則 container...")
         create_url = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads"
@@ -239,19 +252,35 @@ def post_to_threads(post_text):
         if last_published_id:
             data["reply_to_id"] = last_published_id
 
-        res = requests.post(create_url, data=data).json()
+        res = requests.post(create_url, data=data, timeout=30).json()
         creation_id = res.get("id")
         if not creation_id:
             raise Exception(f"建立 container 失敗（第 {i+1} 則）：{res}")
-        time.sleep(5)
+        time.sleep(8)
 
-        pub_res = requests.post(
-            f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish",
-            data={"creation_id": creation_id, "access_token": THREADS_TOKEN}
-        ).json()
+        pub_res = None
+        for attempt in range(3):
+            print(f"📤 發布第 {i+1} 則（第 {attempt+1} 次嘗試）...")
+            pub_res = requests.post(
+                f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish",
+                data={"creation_id": creation_id, "access_token": THREADS_TOKEN},
+                timeout=30
+            ).json()
+
+            if pub_res.get("id"):
+                break
+            elif pub_res.get("error", {}).get("is_transient"):
+                print(f"暫時性錯誤，等待 15 秒後重試...")
+                time.sleep(15)
+            else:
+                raise Exception(f"發布失敗（第 {i+1} 則）：{pub_res}")
+
+        if not pub_res or not pub_res.get("id"):
+            raise Exception(f"發布失敗超過重試次數（第 {i+1} 則）：{pub_res}")
+
         last_published_id = pub_res.get("id", "")
         print(f"第 {i+1} 則結果：", pub_res)
-        time.sleep(3)
+        time.sleep(5)
 
 # ── 主程式 ────────────────────────────────────────────
 if __name__ == "__main__":
@@ -279,7 +308,7 @@ if __name__ == "__main__":
         post_to_threads(post_text)
         update_status(page_id, "已發")
         print("✅ 完成！")
-        send_telegram("✅ media 給主題 發文成功！")
+        send_telegram(f"✅ media 給主題 發文成功！\n主題：{custom_topic}")
 
     except Exception as e:
         error_msg = f"❌ media 給主題 發文失敗！\n錯誤原因：{str(e)}"

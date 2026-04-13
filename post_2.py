@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import random
 import requests
 from google import genai
 
@@ -84,9 +85,9 @@ def get_pending_topics():
         res = requests.post(url, headers=headers, json=payload, timeout=30)
         print("HTTP 狀態碼：", res.status_code)
         data = res.json()
-        print("Notion API 回傳：", data)
-        print("找到筆數：", len(data.get("results", [])))
-        return data.get("results", [])
+        results = data.get("results", [])
+        print("找到筆數：", len(results))
+        return results
     except requests.exceptions.Timeout:
         print("❌ Notion API Timeout（30秒無回應）")
         return []
@@ -290,7 +291,8 @@ if __name__ == "__main__":
         print("沒有待發主題，結束。")
         exit(0)
 
-    page = pages[0]
+    # 隨機挑一筆
+    page = random.choice(pages)
     page_id = page["id"]
     props = page.get("properties", {})
     topic_list = props.get("主題", {}).get("title", [])

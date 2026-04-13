@@ -25,7 +25,7 @@ def send_telegram(message):
         timeout=30
     )
 
-# ── 撈待發，依「排序」欄位排序，取第一筆 ──────────────
+# ── 撈待發，依建立時間排序 ────────────────────────────
 def get_pending_posts():
     url = f"https://api.notion.com/v1/databases/{NOTION_POST_DB_ID}/query"
     payload = {
@@ -34,21 +34,32 @@ def get_pending_posts():
             "status": {"equals": "待發"}
         },
         "sorts": [
-            {"property": "排序", "direction": "ascending"}
+            {"timestamp": "created_time", "direction": "ascending"}
         ]
     }
-    res = requests.post(url, headers=NOTION_HEADERS, json=payload, timeout=30).json()
-    results = res.get("results", [])
+    res = requests.post(url, headers=NOTION_HEADERS, json=payload, timeout=30)
+    print("HTTP 狀態碼：", res.status_code)
+    data = res.json()
+
+    if data.get("object") == "error":
+        print("❌ API 錯誤：", data)
+        return []
+
+    results = data.get("results", [])
     print(f"篩選後待發筆數：{len(results)}")
     return results
 
-# ── 讀取內容：先試 rich_text 欄位，空的話改讀頁面 body ──
+# ── 讀取內容：rich_text 欄位讀不完就補讀頁面 blocks ───
 def get_content_from_property(page):
     rich_text = page["properties"].get("內容", {}).get("rich_text", [])
     content = "".join([t["plain_text"] for t in rich_text])
 
     if content.strip():
         print(f"✅ 從 rich_text 欄位讀到內容，長度：{len(content)}")
+        # rich_text 有 2000 字元上限，接近上限就補讀 blocks
+        if len(content) >= 1900:
+            print("⚠️  內容接近 2000 字元上限，改讀頁面 body blocks 確保完整...")
+            return get_content_from_blocks(page["id"])
         return content
 
     print("⚠️  rich_text 欄位為空，改讀頁面 body blocks...")
@@ -154,7 +165,7 @@ if __name__ == "__main__":
     page_id = page["id"]
 
     content = get_content_from_property(page)
-    print(f"讀到的內容預覽：{repr(content[:100])}")
+    print(f"讀到的內容預覽：{repr(content[:200])}")
 
     if not content.strip():
         print("內容為空，結束。")

@@ -64,7 +64,8 @@ def send_telegram(message):
     chat_id = os.environ["TELEGRAM_CHAT_ID"]
     requests.post(
         f"https://api.telegram.org/bot{token}/sendMessage",
-        data={"chat_id": chat_id, "text": message}
+        data={"chat_id": chat_id, "text": message},
+        timeout=30
     )
 
 def get_used_topics():
@@ -77,7 +78,7 @@ def get_used_topics():
     used = []
     payload = {}
     while True:
-        res = requests.post(url, headers=headers, json=payload).json()
+        res = requests.post(url, headers=headers, json=payload, timeout=30).json()
         for page in res.get("results", []):
             props = page.get("properties", {})
             title_list = props.get("主題", {}).get("title", [])
@@ -192,7 +193,11 @@ def generate_post(used_topics):
 
 輸出格式：第一行輸出「主題：[主題內容]」，空一行後開始輸出貼文內容。
 """
-    response = client.models.generate_content(model="gemma-4-31b-it", contents=prompt)
+    response = client.models.generate_content(
+        model="gemma-4-31b-it",
+        contents=prompt,
+        config={"timeout": 120}
+    )
     return response.text.strip()
 
 def extract_topic(post_text):
@@ -218,8 +223,9 @@ def post_to_threads(post_text):
 
     for i, text in enumerate(posts):
         text = text.replace("\\n", "\n")
-        while len(text.encode('utf-8')) > 500:
-            text = text[:500]
+        encoded = text.encode('utf-8')
+        if len(encoded) > 500:
+            text = encoded[:500].decode('utf-8', errors='ignore')
 
         print(f"🚀 建立第 {i+1} 則 container...")
         create_url = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads"
@@ -227,7 +233,7 @@ def post_to_threads(post_text):
         if first_published_id:
             data["reply_to_id"] = first_published_id
 
-        res = requests.post(create_url, data=data).json()
+        res = requests.post(create_url, data=data, timeout=30).json()
         creation_id = res.get("id")
         if not creation_id:
             raise Exception(f"建立 container 失敗（第 {i+1} 則）：{res}")
@@ -236,7 +242,8 @@ def post_to_threads(post_text):
         print(f"📤 發布第 {i+1} 則...")
         pub_res = requests.post(
             f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish",
-            data={"creation_id": creation_id, "access_token": THREADS_TOKEN}
+            data={"creation_id": creation_id, "access_token": THREADS_TOKEN},
+            timeout=30
         ).json()
         published_id = pub_res.get("id", "")
         if i == 0:
@@ -269,7 +276,7 @@ def save_to_notion(topic, post_text):
             "狀態": {"status": {"name": "已發"}}
         }
     }
-    res = requests.post(url, headers=headers, json=payload)
+    res = requests.post(url, headers=headers, json=payload, timeout=30)
     print("Notion 回應：", res.status_code)
 
 # ── 主程式 ────────────────────────────────────────────

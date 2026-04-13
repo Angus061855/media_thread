@@ -90,7 +90,10 @@ def get_used_topics():
     return used
 
 def generate_post(used_topics):
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    client = genai.Client(
+        api_key=GEMINI_API_KEY,
+        http_options={"timeout": 120}
+    )
     used_str = "\n".join(f"- {t}" for t in used_topics) if used_topics else "（目前沒有已用主題）"
 
     prompt = f"""
@@ -195,8 +198,7 @@ def generate_post(used_topics):
 """
     response = client.models.generate_content(
         model="gemma-4-31b-it",
-        contents=prompt,
-        config={"timeout": 120}
+        contents=prompt
     )
     return response.text.strip()
 

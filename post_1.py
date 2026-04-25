@@ -237,16 +237,6 @@ def generate_post(used_topics):
 7. 禁止出現「姐妹們」「姊妹們」「妹子」「進場」類似這種很不專業的詞語
 8. 如果講到比較艱深的術語，例如「壓檔」＝壓薪水 「節薪」＝10分鐘的薪水 需要簡單解釋
 
-【寫作規則 ── 嚴格遵守】
-1. 禁止使用任何人名，一律用「有個小姐」「有個女生」「她」代替
-2. 禁止使用：「——」、任何引用來源符號、emoji、粗體、斜體
-3. 標點符號全部使用全形（，。？！：）
-4. 禁止 AI 感用語：他笑著搖搖頭、我愣住了、他苦笑著說、頓了頓、深吸一口氣、若有所思、眼神黯淡下來
-5. 禁止句型：「不是⋯而是⋯」「更扯的是」「意味著」「在此情境下」「我們可以觀察到」
-6. 禁止出現謾罵「店家」「酒店」等字眼，所有問題來源只能是「黑心經紀」或「經紀人」
-7. 禁止出現「姐妹們」「姊妹們」「妹啊」類似這種很不專業的詞語
-8. 如果講到比較艱深的術語，例如「壓檔」＝壓薪水 「節薪」＝10分鐘的薪水 需要簡單解釋
-
 【行業術語對照表】
 以下是八大行業的專業術語，請在寫作時自然使用，不需要解釋它們的意思：
 
@@ -284,6 +274,8 @@ def generate_post(used_topics):
 【格式規則】
 - 直接輸出文章內容，不要用任何 codeblock 包起來
 - 每則開頭單獨一行寫「§1」「§2」...作為分隔標記
+- §符號和數字之間不能有空格，只能寫「§1」不能寫「§ 1」
+- §標記前後不能有任何其他符號或標點
 - 只輸出文章內容，不要加任何說明、標題、編號
 
 【情緒曲線設計】
@@ -300,7 +292,7 @@ def generate_post(used_topics):
                 http_options={"timeout": 300000}
             )
             response = client.models.generate_content(
-                model="gemma-4-31b-it",
+                model="gemini-2.5-flash",
                 contents=prompt
             )
             return response.text.strip()
@@ -318,6 +310,34 @@ def extract_topic(post_text):
             return line.replace("主題：", "").strip()
     return "未知主題"
 
+def clean_text(text):
+    # 移除 Gemini 可能產生的 --- 分隔線
+    text = re.sub(r'\n?-{2,}\n?', '\n', text)
+    # 移除 *** 或 ** 粗體標記
+    text = re.sub(r'\*{2,}', '', text)
+    # 移除多餘空白行（超過兩個換行壓縮成兩個）
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+def truncate_to_chars(text, max_chars=480):
+    """
+    依照字元數截斷，保留完整句子
+    Threads 上限 500 字元，保留 20 字元緩衝
+    """
+    if len(text) <= max_chars:
+        return text
+    # 在 max_chars 之前找最後一個句號或換行來截斷
+    truncated = text[:max_chars]
+    last_break = max(
+        truncated.rfind('。'),
+        truncated.rfind('！'),
+        truncated.rfind('？'),
+        truncated.rfind('\n')
+    )
+    if last_break > 0:
+        return truncated[:last_break + 1]
+    return truncated
+
 def post_to_threads(post_text):
     lines = post_text.strip().split("\n")
     content_lines = []
@@ -329,19 +349,34 @@ def post_to_threads(post_text):
         content_lines.append(line)
     content = "\n".join(content_lines).strip()
 
-    posts = re.split(r'§\d+', content)
+    posts = re.split(r'\*{0,2}§\s*[１２３４５６７８９\d]+[\.\s。\*]*\*{0,2}', content)
     posts = [p.strip() for p in posts if p.strip()]
+
+    if len(posts) < 3:
+        raise Exception(f"段落切割異常，只切出 {len(posts)} 則，請檢查 Gemini 輸出格式。\n原始內容前300字：\n{content[:300]}")
+
     last_published_id = ""
+    first_published_id = ""
 
     for i, text in enumerate(posts):
+        # 清理雜訊（--- 分隔線、粗體標記等）
+        text = clean_text(text)
         text = text.replace("\\n", "\n")
-        encoded = text.encode('utf-8')
-        if len(encoded) > 500:
-            text = encoded[:500].decode('utf-8', errors='ignore')
 
-        print(f"🚀 建立第 {i+1} 則 container...")
+        # ✅ 用字元數截斷，不用 bytes
+        text = truncate_to_chars(text, max_chars=480)
+
+        if not text:
+            print(f"⚠️ 第 {i+1} 則內容為空，跳過")
+            continue
+
+        print(f"🚀 建立第 {i+1} 則 container（{len(text)} 字元）...")
         create_url = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads"
-        data = {"media_type": "TEXT", "text": text, "access_token": THREADS_TOKEN}
+        data = {
+            "media_type": "TEXT",
+            "text": text,
+            "access_token": THREADS_TOKEN
+        }
         if last_published_id:
             data["reply_to_id"] = last_published_id
 
@@ -349,8 +384,10 @@ def post_to_threads(post_text):
         creation_id = res.get("id")
         if not creation_id:
             raise Exception(f"建立 container 失敗（第 {i+1} 則）：{res}")
+
         time.sleep(8)
 
+        # ✅ 只發布一次，最多重試 3 次
         pub_res = None
         for attempt in range(3):
             print(f"📤 發布第 {i+1} 則（第 {attempt+1} 次嘗試）...")
@@ -371,36 +408,12 @@ def post_to_threads(post_text):
         if not pub_res or not pub_res.get("id"):
             raise Exception(f"發布失敗超過重試次數（第 {i+1} 則）：{pub_res}")
 
-        last_published_id = pub_res.get("id", "")
-        print(f"第 {i+1} 則結果：", pub_res)
-        time.sleep(5)
-
-        print(f"📤 發布第 {i+1} 則...")
-        pub_res = None
-        for attempt in range(3):
-            print(f"📤 發布第 {i+1} 則（第 {attempt+1} 次嘗試）...")
-            pub_res = requests.post(
-                f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish",
-                data={"creation_id": creation_id, "access_token": THREADS_TOKEN},
-                timeout=30
-            ).json()
-
-            if pub_res.get("id"):  # 成功
-                break
-            elif pub_res.get("error", {}).get("is_transient"):  # 暫時性錯誤
-                print(f"暫時性錯誤，等待 15 秒後重試...")
-                time.sleep(15)
-            else:  # 非暫時性錯誤
-                raise Exception(f"發布失敗（第 {i+1} 則）：{pub_res}")
-
-        if not pub_res or not pub_res.get("id"):
-            raise Exception(f"發布失敗超過重試次數（第 {i+1} 則）：{pub_res}")
-
-        published_id = pub_res.get("id", "")
+        last_published_id = pub_res["id"]
         if i == 0:
-            first_published_id = published_id
-        print(f"第 {i+1} 則結果：", pub_res)
-        time.sleep(8)  # 改成 5 秒，給 Threads 多一點緩衝
+            first_published_id = last_published_id
+
+        print(f"✅ 第 {i+1} 則發布成功：{last_published_id}")
+        time.sleep(8)
 
 def save_to_notion(topic, post_text):
     lines = post_text.strip().split("\n")
@@ -433,7 +446,7 @@ def save_to_notion(topic, post_text):
 # ── 主程式 ────────────────────────────────────────────
 if __name__ == "__main__":
     try:
-        print("=== _1 自動生成模式 ===")
+        print("=== 自動生成模式 ===")
         used_topics = get_used_topics()
         print(f"共 {len(used_topics)} 個已用主題")
         post_text = generate_post(used_topics)
@@ -443,10 +456,10 @@ if __name__ == "__main__":
         post_to_threads(post_text)
         save_to_notion(topic, post_text)
         print("✅ 完成！")
-        send_telegram(f"✅ media 自動發 發文成功！\n主題：{topic}")
+        send_telegram(f"✅ 自動發文成功！\n主題：{topic}")
 
     except Exception as e:
-        error_msg = f"❌ media 自動發 發文失敗！\n錯誤原因：{str(e)}"
+        error_msg = f"❌ 發文失敗！\n錯誤原因：{str(e)}"
         print(error_msg)
         send_telegram(error_msg)
         raise

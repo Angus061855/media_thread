@@ -107,6 +107,37 @@ def update_status(page_id, status="已發"):
     }
     requests.patch(url, headers=headers, json={"properties": {"狀態": {"status": {"name": status}}}}, timeout=30)
 
+# ══════════════════════════════════════════
+# ✅ 修正1：新增 clean_text，清除所有 AI 雜訊
+# ══════════════════════════════════════════
+def clean_text(text):
+    # 移除 --- 分隔線（各種變體）
+    text = re.sub(r'\n?-{2,}\n?', '\n', text)
+    # 移除 *** 或 ** 粗體標記
+    text = re.sub(r'\*{2,}', '', text)
+    # 移除單個 * 斜體標記
+    text = re.sub(r'(?<![\*])\*(?![\*])', '', text)
+    # 移除多餘的空行（超過兩個換行壓縮成兩個）
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    # 移除行首行尾空白
+    lines = [line.strip() for line in text.split('\n')]
+    text = '\n'.join(lines)
+    return text.strip()
+
+# ══════════════════════════════════════════
+# ✅ 修正2：截斷改用字元數，不用 bytes
+# ══════════════════════════════════════════
+def truncate_to_chars(text, max_chars=480):
+    if len(text) <= max_chars:
+        return text
+    # 嘗試在標點符號處截斷
+    truncated = text[:max_chars]
+    for punct in ['。', '！', '？', '\n']:
+        idx = truncated.rfind(punct)
+        if idx > max_chars * 0.7:
+            return truncated[:idx+1]
+    return truncated
+
 def generate_post(custom_topic):
     for attempt in range(3):
         try:
@@ -293,22 +324,23 @@ def generate_post(custom_topic):
 - 要求妳交出手機或限制人身自由
 
 【格式規則】
-- 每則開頭單獨一行寫「§1」「§2」...
-- 只輸出文章內容，不要加任何說明
+- 每則開頭單獨一行寫「§1」「§2」...（§符號後面緊接數字，中間不可有空格）
+- 只輸出文章內容，不要加任何說明、標題、解釋文字
+- 禁止在文章中出現 ---、***、** 等任何 Markdown 符號
 - 第一部分（開場）可以比較短。
 - 第一部分：衝擊性開場(100-150 字)
-公式：
-- 拋出一個常見認知或問題
-- 立即用反轉句推翻它
-- 製造懸念，但不立刻揭曉答案
 
 【情緒曲線設計】
 - 第一則：震撼 → 第二則：同情 → 第三則：憤怒 → 第四則：恐懼 → 第五則：希望＋警惕 → 第六則：強化警惕 → 第七則：信任＋行動呼籲
 
 輸出格式：第一行輸出「主題：{custom_topic}」，空一行後開始輸出貼文內容。
 """
-            response = client.models.generate_content(model="gemma-4-31b-it", contents=prompt)
-            return response.text.strip()
+            # ✅ 修正4：換成 gemini-2.5-flash
+            response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+            raw = response.text.strip()
+            # ✅ 修正1：呼叫 clean_text 清除雜訊
+            cleaned = clean_text(raw)
+            return cleaned
         except Exception as e:
             print(f"第 {attempt+1} 次失敗：{e}")
             if attempt < 2:
@@ -328,15 +360,21 @@ def post_to_threads(post_text):
         content_lines.append(line)
     content = "\n".join(content_lines).strip()
 
-    posts = re.split(r'§\d+', content)
+    # ✅ 修正3：更穩健的 § 切割正則，支援空格與各種變體
+    posts = re.split(r'\s*§\s*\d+\s*', content)
     posts = [p.strip() for p in posts if p.strip()]
+
+    # 安全檢查：至少要有 3 則才發
+    if len(posts) < 3:
+        raise Exception(f"段落切割異常，只切出 {len(posts)} 則，請檢查 Gemini 輸出格式。內容：\n{content[:300]}")
+
     last_published_id = ""
 
     for i, text in enumerate(posts):
         text = text.replace("\\n", "\n")
-        encoded = text.encode('utf-8')
-        if len(encoded) > 500:
-            text = encoded[:500].decode('utf-8', errors='ignore')
+
+        # ✅ 修正2：改用字元數截斷，不用 bytes
+        text = truncate_to_chars(text, max_chars=480)
 
         print(f"🚀 建立第 {i+1} 則 container...")
         create_url = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads"
@@ -372,7 +410,11 @@ def post_to_threads(post_text):
 
         last_published_id = pub_res.get("id", "")
         print(f"第 {i+1} 則結果：", pub_res)
-        time.sleep(5)
+
+        # ✅ 隨機間隔，模擬真人操作
+        wait = random.randint(10, 20)
+        print(f"⏳ 等待 {wait} 秒後發下一則...")
+        time.sleep(wait)
 
 # ── 主程式 ────────────────────────────────────────────
 if __name__ == "__main__":

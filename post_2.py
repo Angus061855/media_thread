@@ -276,15 +276,23 @@ def generate_post(custom_topic):
                 raise
 
 def post_to_threads(post_text):
-    lines = post_text.strip().split("\n")
-    content_lines = []
-    skip_topic = True
-    for line in lines:
-        if skip_topic and line.startswith("主題："):
-            skip_topic = False
-            continue
-        content_lines.append(line)
-    content = "\n".join(content_lines).strip()
+    post_text = post_text.strip()
+
+    # 直接從第一個 § 開始，丟掉前面所有主題備註文字
+    first_section = post_text.find('§')
+    if first_section == -1:
+        # 沒有 §，才用舊的逐行跳過邏輯
+        lines = post_text.split("\n")
+        content_lines = []
+        skip_topic = True
+        for line in lines:
+            if skip_topic and line.startswith("主題："):
+                skip_topic = False
+                continue
+            content_lines.append(line)
+        content = "\n".join(content_lines).strip()
+    else:
+        content = post_text[first_section:].strip()
 
     posts = split_posts(content)
     if len(posts) < 3:

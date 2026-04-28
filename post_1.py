@@ -228,7 +228,7 @@ def generate_post(used_topics):
 - 重要觀念可以重複強調
 
 【寫作規則 ── 嚴格遵守】
-1. 禁止使用任何人名，一律用「有個小姐」「有個女生」「她」代替
+1. 【絕對禁止】使用任何人名、英文名、中文名、暱稱，一律只能用「有個小姐」「有個女生」「她」代替，違反此規則整篇作廢
 2. 禁止使用：「——」、任何引用來源符號、emoji、粗體、斜體
 3. 標點符號全部使用全形（，。？！：）
 4. 禁止 AI 感用語：他笑著搖搖頭、我愣住了、他苦笑著說、頓了頓、深吸一口氣、若有所思、眼神黯淡下來
@@ -271,12 +271,12 @@ def generate_post(used_topics):
 - 對方不讓妳帶走合約副本或拒絕讓妳看清楚內容
 - 要求妳交出手機或限制人身自由
 
-【格式規則】
+【格式規則 ── 非常重要】
 - 直接輸出文章內容，不要用任何 codeblock 包起來
-- 每則開頭單獨一行寫「§1」「§2」...作為分隔標記
-- §符號和數字之間不能有空格，只能寫「§1」不能寫「§ 1」
-- §標記前後不能有任何其他符號或標點
+- 每則開頭單獨一行寫「§1」「§2」「§3」...（§符號後面緊接數字，中間絕對不可有空格）
+- §標記前後不能有任何其他符號、標點、空格、星號
 - 只輸出文章內容，不要加任何說明、標題、編號
+- 禁止在文章中出現 ---、***、** 等任何 Markdown 符號
 
 【情緒曲線設計】
 - 第一則：震撼 → 第二則：同情 → 第三則：憤怒 → 第四則：恐懼 → 第五則：希望＋警惕 → 第六則：強化警惕 → 第七則：信任＋行動呼籲
@@ -295,7 +295,19 @@ def generate_post(used_topics):
                 model="gemini-2.5-flash",
                 contents=prompt
             )
-            return response.text.strip()
+            raw = response.text.strip()
+            cleaned = clean_text(raw)
+
+            # ── 發布前檢查：若有人名則重試 ──
+            if contains_person_name(cleaned):
+                print(f"⚠️ 偵測到人名，第 {attempt+1} 次重試...")
+                if attempt < 2:
+                    time.sleep(10)
+                    continue
+                else:
+                    raise Exception("Gemini 持續生成人名，已超過重試次數")
+
+            return cleaned
         except Exception as e:
             print(f"第 {attempt+1} 次失敗：{e}")
             if attempt < 2:
@@ -304,6 +316,18 @@ def generate_post(used_topics):
             else:
                 raise
 
+def contains_person_name(text):
+    """
+    偵測是否含有人名（英文名或中文人名模式）
+    英文大寫開頭單字（非句首）視為潛在人名
+    """
+    # 偵測英文人名：單獨大寫英文單字（如 Katie、Amy、Lisa）
+    english_names = re.findall(r'(?<![.!?。！？\n])\b[A-Z][a-z]{1,10}\b', text)
+    if english_names:
+        print(f"⚠️ 偵測到疑似英文人名：{english_names}")
+        return True
+    return False
+
 def extract_topic(post_text):
     for line in post_text.strip().split("\n"):
         if line.startswith("主題："):
@@ -311,22 +335,25 @@ def extract_topic(post_text):
     return "未知主題"
 
 def clean_text(text):
-    # 移除 Gemini 可能產生的 --- 分隔線
+    # 移除 Gemini 可能產生的 --- 分隔線（各種變體）
     text = re.sub(r'\n?-{2,}\n?', '\n', text)
     # 移除 *** 或 ** 粗體標記
     text = re.sub(r'\*{2,}', '', text)
+    # 移除單個 * 斜體標記（不影響中文）
+    text = re.sub(r'(?<!\*)\*(?!\*)', '', text)
+    # 移除引用符號 >
+    text = re.sub(r'^>\s*', '', text, flags=re.MULTILINE)
     # 移除多餘空白行（超過兩個換行壓縮成兩個）
     text = re.sub(r'\n{3,}', '\n\n', text)
+    # 清理每行行首行尾空白
+    lines = [line.strip() for line in text.split('\n')]
+    text = '\n'.join(lines)
     return text.strip()
 
 def truncate_to_chars(text, max_chars=480):
-    """
-    依照字元數截斷，保留完整句子
-    Threads 上限 500 字元，保留 20 字元緩衝
-    """
+    """依照字元數截斷，保留完整句子"""
     if len(text) <= max_chars:
         return text
-    # 在 max_chars 之前找最後一個句號或換行來截斷
     truncated = text[:max_chars]
     last_break = max(
         truncated.rfind('。'),
@@ -334,9 +361,29 @@ def truncate_to_chars(text, max_chars=480):
         truncated.rfind('？'),
         truncated.rfind('\n')
     )
-    if last_break > 0:
+    if last_break > max_chars * 0.7:
         return truncated[:last_break + 1]
     return truncated
+
+def split_posts(content):
+    """
+    切割 §1 §2 ... 段落，支援各種格式變體：
+    §1 / § 1 / §１ / **§1** 等
+    """
+    # 統一清除 § 前後可能的星號或空白
+    content = re.sub(r'\*{0,3}\s*§\s*([０-９\d]+)\s*\*{0,3}', r'\n§SPLIT§\1\n', content)
+    parts = content.split('\n§SPLIT§')
+    posts = []
+    for part in parts:
+        # 去掉段落編號那一行
+        lines = part.split('\n')
+        # 第一行是數字，跳過
+        if lines and re.match(r'^[０-９\d]+$', lines[0].strip()):
+            lines = lines[1:]
+        text = '\n'.join(lines).strip()
+        if text:
+            posts.append(text)
+    return posts
 
 def post_to_threads(post_text):
     lines = post_text.strip().split("\n")
@@ -349,21 +396,20 @@ def post_to_threads(post_text):
         content_lines.append(line)
     content = "\n".join(content_lines).strip()
 
-    posts = re.split(r'\*{0,2}§\s*[１２３４５６７８９\d]+[\.\s。\*]*\*{0,2}', content)
-    posts = [p.strip() for p in posts if p.strip()]
+    posts = split_posts(content)
 
     if len(posts) < 3:
-        raise Exception(f"段落切割異常，只切出 {len(posts)} 則，請檢查 Gemini 輸出格式。\n原始內容前300字：\n{content[:300]}")
+        raise Exception(
+            f"段落切割異常，只切出 {len(posts)} 則，請檢查 Gemini 輸出格式。\n"
+            f"原始內容前500字：\n{content[:500]}"
+        )
 
     last_published_id = ""
     first_published_id = ""
 
     for i, text in enumerate(posts):
-        # 清理雜訊（--- 分隔線、粗體標記等）
         text = clean_text(text)
         text = text.replace("\\n", "\n")
-
-        # ✅ 用字元數截斷，不用 bytes
         text = truncate_to_chars(text, max_chars=480)
 
         if not text:
@@ -387,7 +433,6 @@ def post_to_threads(post_text):
 
         time.sleep(8)
 
-        # ✅ 只發布一次，最多重試 3 次
         pub_res = None
         for attempt in range(3):
             print(f"📤 發布第 {i+1} 則（第 {attempt+1} 次嘗試）...")

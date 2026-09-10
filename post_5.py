@@ -6,7 +6,7 @@ import requests
 
 # ── 環境變數 ──────────────────────────────────────────
 NOTION_TOKEN_2     = os.environ["NOTION_TOKEN_2"]
-NOTION_POST_DB_ID  = os.environ["NOTION_DATABASE_ID_3"]
+NOTION_POST_DB_ID  = os.environ["NOTION_DATABASE_ID_5"]
 THREADS_USER_ID    = os.environ["THREADS_USER_ID"]
 THREADS_TOKEN      = os.environ["IG_ACCESS_TOKEN"]
 
@@ -202,7 +202,7 @@ def post_to_threads(content):
         time.sleep(wait)
 
 if __name__ == "__main__":
-    print("=== _3 段落直接發模式 ===")
+    print("=== _5 段落直接發模式 ===")
 
     posts = get_pending_posts()
     if not posts:
@@ -229,9 +229,9 @@ if __name__ == "__main__":
         post_to_threads(target_content)
         update_status(page_id, "已發")
         print("✅ 完成！")
-        send_telegram("✅ Thread White 3 給文章 發文成功！")
+        send_telegram("✅ Thread White 5 給文章 發文成功！")
     except Exception as e:
-        error_msg = f"❌ Thread White 3 給文章 發文失敗！\n錯誤原因：{str(e)}"
+        error_msg = f"❌ Thread White 5 給文章 發文失敗！\n錯誤原因：{str(e)}"
         print(error_msg)
         send_telegram(error_msg)
         raise

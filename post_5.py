@@ -125,7 +125,7 @@ def get_pending_posts():
     return results
 
 def get_content_from_property(page):
-    rich_text = page["properties"].get("內容", {}).get("rich_text", [])
+    rich_text = page["properties"].get("預寫內容", {}).get("rich_text", [])
     content = "".join([t["plain_text"] for t in rich_text])
     print(f"✅ 讀到預寫內容，長度：{len(content)}")
     return content
